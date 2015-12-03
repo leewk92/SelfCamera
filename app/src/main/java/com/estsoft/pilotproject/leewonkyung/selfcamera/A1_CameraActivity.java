@@ -1,136 +1,100 @@
 package com.estsoft.pilotproject.leewonkyung.selfcamera;
 
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import org.opencv.android.BaseLoaderCallback;
+import org.opencv.android.CameraBridgeViewBase.CvCameraViewFrame;
+import org.opencv.android.LoaderCallbackInterface;
+import org.opencv.android.OpenCVLoader;
+import org.opencv.core.Mat;
+import org.opencv.android.CameraBridgeViewBase;
+import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
 
 import android.app.Activity;
-import android.hardware.Camera;
-import android.hardware.Camera.PictureCallback;
-import android.hardware.Camera.ShutterCallback;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.SurfaceHolder;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.SurfaceView;
-import android.view.View;
-import android.widget.TextView;
+import android.view.WindowManager;
 import android.widget.Toast;
 
-public class A1_CameraActivity extends Activity implements SurfaceHolder.Callback {
-    TextView testView;
+public class A1_CameraActivity extends Activity implements CvCameraViewListener2 {
+    private static final String TAG = "OCVSample::Activity";
 
-    Camera camera;
-    SurfaceView surfaceView;
-    SurfaceHolder surfaceHolder;
+    private CameraBridgeViewBase mOpenCvCameraView;
+    private boolean              mIsJavaCamera = true;
+    private MenuItem             mItemSwitchCamera = null;
 
-    PictureCallback rawCallback;
-    ShutterCallback shutterCallback;
-    PictureCallback jpegCallback;
+    private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
+        @Override
+        public void onManagerConnected(int status) {
+            switch (status) {
+                case LoaderCallbackInterface.SUCCESS:
+                {
+                    Log.i(TAG, "OpenCV loaded successfully");
+                    mOpenCvCameraView.enableView();
+                } break;
+                default:
+                {
+                    super.onManagerConnected(status);
+                } break;
+            }
+        }
+    };
+
+    public A1_CameraActivity() {
+        Log.i(TAG, "Instantiated new " + this.getClass());
+    }
 
     /** Called when the activity is first created. */
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        Log.i(TAG, "called onCreate");
         super.onCreate(savedInstanceState);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        setContentView(R.layout.activity_main);
+        setContentView(R.layout.a1_camera_layout);
 
-        surfaceView = (SurfaceView) findViewById(R.id.surfaceView);
-        surfaceHolder = surfaceView.getHolder();
+        mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.java_preview);
 
-        // Install a SurfaceHolder.Callback so we get notified when the
-        // underlying surface is created and destroyed.
-        surfaceHolder.addCallback(this);
+        mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
 
-        // deprecated setting, but required on Android versions prior to 3.0
-        surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
-
-        jpegCallback = new PictureCallback() {
-            public void onPictureTaken(byte[] data, Camera camera) {
-                FileOutputStream outStream = null;
-                try {
-                    outStream = new FileOutputStream(String.format("/sdcard/%d.jpg", System.currentTimeMillis()));
-                    outStream.write(data);
-                    outStream.close();
-                    Log.d("Log", "onPictureTaken - wrote bytes: " + data.length);
-                } catch (FileNotFoundException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } finally {
-                }
-                Toast.makeText(getApplicationContext(), "Picture Saved", Toast.LENGTH_SHORT).show();
-                refreshCamera();
-            }
-        };
+        mOpenCvCameraView.setCvCameraViewListener(this);
     }
 
-    public void captureImage(View v) throws IOException {
-        //take the picture
-        camera.takePicture(null, null, jpegCallback);
+    @Override
+    public void onPause()
+    {
+        super.onPause();
+        if (mOpenCvCameraView != null)
+            mOpenCvCameraView.disableView();
     }
 
-    public void refreshCamera() {
-        if (surfaceHolder.getSurface() == null) {
-            // preview surface does not exist
-            return;
-        }
-
-        // stop preview before making changes
-        try {
-            camera.stopPreview();
-        } catch (Exception e) {
-            // ignore: tried to stop a non-existent preview
-        }
-
-        // set preview size and make any resize, rotate or
-        // reformatting changes here
-        // start preview with new settings
-        try {
-            camera.setPreviewDisplay(surfaceHolder);
-            camera.startPreview();
-        } catch (Exception e) {
-
+    @Override
+    public void onResume()
+    {
+        super.onResume();
+        if (!OpenCVLoader.initDebug()) {
+            Log.d(TAG, "Internal OpenCV library not found. Using OpenCV Manager for initialization");
+            OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_0_0, this, mLoaderCallback);
+        } else {
+            Log.d(TAG, "OpenCV library found inside package. Using it!");
+            mLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS);
         }
     }
 
-    public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
-        // Now that the size is known, set up the camera parameters and begin
-        // the preview.
-        refreshCamera();
+    public void onDestroy() {
+        super.onDestroy();
+        if (mOpenCvCameraView != null)
+            mOpenCvCameraView.disableView();
     }
 
-    public void surfaceCreated(SurfaceHolder holder) {
-        try {
-            // open the camera
-            camera = Camera.open();
-        } catch (RuntimeException e) {
-            // check for exceptions
-            System.err.println(e);
-            return;
-        }
-        Camera.Parameters param;
-        param = camera.getParameters();
-
-        // modify parameter
-        param.setPreviewSize(352, 288);
-        camera.setParameters(param);
-        try {
-            // The Surface has been created, now tell the camera where to draw
-            // the preview.
-            camera.setPreviewDisplay(surfaceHolder);
-            camera.startPreview();
-        } catch (Exception e) {
-            // check for exceptions
-            System.err.println(e);
-            return;
-        }
+    public void onCameraViewStarted(int width, int height) {
     }
 
-    public void surfaceDestroyed(SurfaceHolder holder) {
-        // stop preview and release camera
-        camera.stopPreview();
-        camera.release();
-        camera = null;
+    public void onCameraViewStopped() {
     }
 
+    public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
+        return inputFrame.rgba();
+    }
 }
